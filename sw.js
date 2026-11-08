@@ -1,4 +1,4 @@
-const C='maus-pos-v3';
+const C='maus-pos-v4';
 const A=['./','./index.html','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
 
 self.addEventListener('install',e=>{
