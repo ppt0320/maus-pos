@@ -24,6 +24,8 @@ nav button{background:none;color:var(--muted);padding:6px 3px;font-size:10px;fle
 .modal{position:fixed;inset:0;background:#0009;z-index:20;display:none;align-items:flex-end;justify-content:center}.modal.show{display:flex}.sheet{background:var(--panel);border:1px solid var(--line);border-radius:20px 20px 0 0;padding:19px;width:100%;max-width:700px;max-height:92vh;overflow:auto;padding-bottom:calc(env(safe-area-inset-bottom) + 22px)}
 .sheethead{display:flex;justify-content:space-between;align-items:center}.sale-line{background:#101720;border:1px solid var(--line);border-radius:12px;padding:10px;margin:10px 0}.sale-line-grid{display:grid;grid-template-columns:1fr 85px;gap:8px}.sale-line-grid .price{grid-column:1/2}.sale-line-grid .qty{grid-column:2/3;grid-row:1/3}.sale-line-grid label{margin-top:4px}.total{font-size:25px;font-weight:850}.hint{font-size:12px;color:var(--muted);line-height:1.45}.reportrow{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line)}.reportrow:last-child{border:0}
 @media(min-width:650px){nav{position:sticky;bottom:auto;max-width:760px;margin:0 auto;border:1px solid var(--line);border-radius:15px}body{padding-bottom:20px}header{position:relative}}
+
+.receipt-paper{background:#fff;color:#171717;border-radius:12px;padding:20px;max-width:440px;margin:0 auto;font:14px Arial,sans-serif}.receipt-brand{text-align:center;font-size:27px;font-weight:900;letter-spacing:1px}.receipt-sub{text-align:center;font-size:12px;font-weight:bold;margin:6px 0 14px;color:#444}.receipt-paper hr{border:0;border-top:1px dashed #aaa;margin:14px 0}.receipt-line{display:flex;justify-content:space-between;gap:10px;margin:12px 0}.receipt-line small{display:block;color:#666;margin-top:4px}.receipt-total{display:flex;justify-content:space-between;font-size:19px;font-weight:bold;margin:16px 0}.receipt-thanks{text-align:center;font-weight:bold;margin-top:18px;color:#333}
 </style></head><body>
 <header><div><div class="brand">MAU$ <span>POS</span></div><div class="sub">VENTAS · PRODUCCIÓN · CLIENTES</div></div><button class="secondary small" onclick="backup()">Respaldo</button></header>
 <main>
@@ -83,18 +85,48 @@ function addPayment(id){
  let p={id:uid(),saleId:id,clientId:s.clientId,amount:n,date:today(),created:new Date().toISOString(),folio:'AB-'+Date.now().toString().slice(-7)};
  db.payments.unshift(p);save();showReceipt('payment',p.id);
 }
-function printDocument(title,body){
- let w=window.open('','_blank');if(!w)return alert('Permite ventanas emergentes para imprimir el comprobante.');
- w.document.write(`<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${esc(title)}</title><style>body{font:14px Arial;padding:22px;color:#111;max-width:620px;margin:auto}h1{font-size:22px}table{width:100%;border-collapse:collapse;margin-top:15px}td,th{border-bottom:1px solid #ddd;padding:8px 4px;text-align:left;font-size:12px}.right{text-align:right}.total{font-size:22px;font-weight:bold;margin:18px 0}.muted{color:#555}button{padding:12px 18px;background:#111;color:#fff;border:0;border-radius:8px}@media print{button{display:none}}</style><body><h1>MAU$ POS</h1><p>${esc(title)}</p>${body}<p style="margin-top:28px;text-align:center">Gracias</p><button onclick="window.print()">Imprimir / Guardar PDF</button></body></html>`);w.document.close();
+function receiptData(kind,id){
+ if(kind==='sale'){
+  let s=db.sales.find(x=>x.id===id);if(!s)return null;let c=client(s.clientId);
+  return {title:'Comprobante de venta',kind:'VENTA',folio:s.folio||s.id,date:s.date,client:c?.name||'Cliente',type:s.type==='credit'?'Crédito':'Contado',lines:s.lines.map(l=>({name:l.name,qty:l.qty,price:l.price,amount:l.price*l.qty})),total:s.total,paid:s.paid,balance:s.balance};
+ }
+ let p=db.payments.find(x=>x.id===id);if(!p)return null;let c=client(p.clientId),sale=db.sales.find(x=>x.id===p.saleId);
+ return {title:'Comprobante de abono',kind:'ABONO',folio:p.folio||p.id,date:p.date,client:c?.name||'Cliente',amount:p.amount,balance:sale?.balance||0};
+}
+function receiptMarkup(d){
+ if(d.kind==='VENTA')return `<div class="receipt-paper"><div class="receipt-brand">MAU$ POS</div><div class="receipt-sub">COMPROBANTE DE VENTA</div><hr><p><b>Folio:</b> ${esc(d.folio)}<br><b>Fecha:</b> ${esc(d.date)}<br><b>Cliente:</b> ${esc(d.client)}<br><b>Tipo:</b> ${esc(d.type)}</p><hr><div class="receipt-lines">${d.lines.map(l=>`<div class="receipt-line"><span>${esc(l.name)} × ${l.qty}<small>${money(l.price)} c/u</small></span><b>${money(l.amount)}</b></div>`).join('')}</div><hr><div class="receipt-total">TOTAL <b>${money(d.total)}</b></div><p>Recibido: <b>${money(d.paid)}</b><br>Saldo pendiente: <b>${money(d.balance)}</b></p><hr><div class="receipt-thanks">¡Gracias por su compra!</div></div>`;
+ return `<div class="receipt-paper"><div class="receipt-brand">MAU$ POS</div><div class="receipt-sub">COMPROBANTE DE ABONO</div><hr><p><b>Folio:</b> ${esc(d.folio)}<br><b>Fecha:</b> ${esc(d.date)}<br><b>Cliente:</b> ${esc(d.client)}</p><hr><div class="receipt-total">ABONO <b>${money(d.amount)}</b></div><p>Nuevo saldo pendiente: <b>${money(d.balance)}</b></p><hr><div class="receipt-thanks">¡Gracias!</div></div>`;
 }
 function showReceipt(kind,id){
- if(kind==='sale'){
-  let s=db.sales.find(x=>x.id===id);if(!s)return;let c=client(s.clientId),rows=s.lines.map(l=>`<tr><td>${esc(l.name)} × ${l.qty}</td><td class="right">${money(l.price*l.qty)}</td></tr>`).join('');
-  printDocument('Comprobante de venta',`<h2>RECIBO DE VENTA</h2><p>Folio: ${esc(s.folio||s.id)}<br>Fecha: ${esc(s.date)}<br>Cliente: ${esc(c?.name||'Cliente')}<br>Tipo: ${s.type==='credit'?'Crédito':'Contado'}</p><table>${rows}</table><div class="total">Total: ${money(s.total)}</div><p>Recibido: ${money(s.paid)}<br>Saldo pendiente: ${money(s.balance)}</p>`);
- }else{
-  let p=db.payments.find(x=>x.id===id);if(!p)return;let c=client(p.clientId),sale=db.sales.find(x=>x.id===p.saleId);
-  printDocument('Comprobante de abono',`<h2>RECIBO DE ABONO</h2><p>Folio: ${esc(p.folio||p.id)}<br>Fecha: ${esc(p.date)}<br>Cliente: ${esc(c?.name||'Cliente')}</p><div class="total">Abono recibido: ${money(p.amount)}</div><p>Nuevo saldo de la venta: ${money(sale?.balance||0)}</p>`);
- }
+ let d=receiptData(kind,id);if(!d)return;
+ modal(d.title,`${receiptMarkup(d)}<div class="actions" style="margin-top:14px;display:grid;grid-template-columns:1fr 1fr"><button onclick="shareReceipt('${kind}','${id}')">Compartir</button><button class="secondary" onclick="downloadReceipt('${kind}','${id}')">Guardar foto</button><button class="secondary" onclick="printReceipt('${kind}','${id}')">Imprimir / PDF</button><button class="danger" onclick="closeModal()">Regresar a MAU$ POS</button></div>`);
+}
+function receiptCanvas(d){
+ let scale=2,w=720,pad=48,lineH=38,extra=d.kind==='VENTA'?d.lines.length*54:0,h=500+extra;
+ let c=document.createElement('canvas');c.width=w*scale;c.height=h*scale;let x=c.getContext('2d');x.scale(scale,scale);x.fillStyle='#fff';x.fillRect(0,0,w,h);
+ let y=60;x.fillStyle='#10141b';x.textAlign='center';x.font='bold 42px Arial';x.fillText('MAU$ POS',w/2,y);y+=42;x.font='bold 22px Arial';x.fillText('COMPROBANTE DE '+d.kind,w/2,y);y+=28;
+ x.strokeStyle='#b8c0c8';x.beginPath();x.moveTo(pad,y);x.lineTo(w-pad,y);x.stroke();y+=38;
+ x.textAlign='left';x.fillStyle='#222';x.font='22px Arial';
+ for(let line of ['Folio: '+d.folio,'Fecha: '+d.date,'Cliente: '+d.client,...(d.kind==='VENTA'?['Tipo: '+d.type]:[])]){x.fillText(line,pad,y);y+=lineH}
+ x.beginPath();x.moveTo(pad,y);x.lineTo(w-pad,y);x.stroke();y+=34;
+ if(d.kind==='VENTA'){x.font='bold 21px Arial';d.lines.forEach(l=>{x.font='21px Arial';x.fillText(l.name+' × '+l.qty,pad,y);x.textAlign='right';x.fillText(money(l.amount),w-pad,y);x.textAlign='left';y+=28;x.fillStyle='#666';x.font='17px Arial';x.fillText(money(l.price)+' c/u',pad+12,y);x.fillStyle='#222';y+=32})}
+ x.beginPath();x.moveTo(pad,y);x.lineTo(w-pad,y);x.stroke();y+=48;x.font='bold 28px Arial';
+ if(d.kind==='VENTA'){x.fillText('TOTAL',pad,y);x.textAlign='right';x.fillText(money(d.total),w-pad,y);y+=48;x.textAlign='left';x.font='22px Arial';x.fillText('Recibido: '+money(d.paid),pad,y);y+=38;x.fillText('Saldo: '+money(d.balance),pad,y)}
+ else{x.fillText('ABONO: '+money(d.amount),pad,y);y+=42;x.font='22px Arial';x.fillText('Nuevo saldo: '+money(d.balance),pad,y)}
+ y+=70;x.textAlign='center';x.font='22px Arial';x.fillStyle='#555';x.fillText('¡Gracias!',w/2,y);return c;
+}
+async function shareReceipt(kind,id){
+ let d=receiptData(kind,id);if(!d)return;let canvas=receiptCanvas(d);
+ try{let blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));let file=new File([blob],`MAUS-${d.kind}-${d.folio}.png`,{type:'image/png'});
+  if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:d.title,text:`${d.title} · ${d.folio}`});return}
+  await navigator.share({title:d.title,text:`MAU$ POS\n${d.title}\nFolio: ${d.folio}\nCliente: ${d.client}\n${d.kind==='VENTA'?'Total: '+money(d.total)+' · Saldo: '+money(d.balance):'Abono: '+money(d.amount)+' · Nuevo saldo: '+money(d.balance)}`});
+ }catch(e){if(e.name!=='AbortError')alert('No se pudo abrir el menú de compartir. Usa Guardar foto.')}
+}
+function downloadReceipt(kind,id){
+ let d=receiptData(kind,id);if(!d)return;let c=receiptCanvas(d),a=document.createElement('a');a.download=`MAUS-${d.kind}-${d.folio}.png`;a.href=c.toDataURL('image/png');a.click();
+}
+function printReceipt(kind,id){
+ let d=receiptData(kind,id);if(!d)return;let w=window.open('','_blank');if(!w)return alert('Permite ventanas emergentes para imprimir.');w.document.write(`<!doctype html><html><meta charset="utf-8"><title>${esc(d.title)}</title><style>body{font:14px Arial;max-width:420px;margin:20px auto;padding:18px;color:#111}.receipt-paper{border:1px solid #ddd;padding:22px}.receipt-brand{text-align:center;font-size:28px;font-weight:bold}.receipt-sub{text-align:center;margin:8px}hr{border:0;border-top:1px dashed #aaa;margin:18px 0}.receipt-line{display:flex;justify-content:space-between;margin:12px 0}.receipt-total{display:flex;justify-content:space-between;font-size:20px;font-weight:bold}.receipt-thanks{text-align:center;margin:25px}</style>${receiptMarkup(d)}<script>window.onload=()=>window.print()<\/script></html>`);w.document.close();
 }
 function debtorsReport(){
  let arr=db.clients.map(c=>({c,b:db.sales.filter(s=>s.clientId===c.id).reduce((a,s)=>a+(+s.balance||0),0)})).filter(x=>x.b>0),total=arr.reduce((a,x)=>a+x.b,0);
