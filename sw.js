@@ -1,4 +1,4 @@
-const CACHE_NAME = "maus-pos-1-12";
+const CACHE_NAME = "maus-pos-1-13";
 
 const FILES = [
   "./",
