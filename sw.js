@@ -1,4 +1,4 @@
-const CACHE_NAME = "maus-pos-1-8";
+const CACHE_NAME = "maus-pos-1-9";
 
 const FILES = [
   "./",
@@ -14,7 +14,6 @@ self.addEventListener("install", function(event) {
       return cache.addAll(FILES);
     })
   );
-
   self.skipWaiting();
 });
 
@@ -30,22 +29,15 @@ self.addEventListener("activate", function(event) {
       );
     })
   );
-
   self.clients.claim();
 });
 
 self.addEventListener("fetch", function(event) {
-  if (event.request.method !== "GET") {
-    return;
-  }
+  if (event.request.method !== "GET") return;
 
   event.respondWith(
     caches.match(event.request).then(function(response) {
-      if (response) {
-        return response;
-      }
-
-      return fetch(event.request);
+      return response || fetch(event.request);
     })
   );
 });
