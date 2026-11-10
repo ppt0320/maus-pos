@@ -1,39 +1,51 @@
-const CACHE_NAME = 'maus-pos-v7';
+const CACHE_NAME = "maus-pos-1-8";
 
-const FILES_TO_CACHE = [
-  './',
-  './index.html',
-  './manifest.webmanifest',
-  './icon-192.png',
-  './icon-512.png'
+const FILES = [
+  "./",
+  "./index.html",
+  "./manifest.webmanifest",
+  "./icon-192.png",
+  "./icon-512.png"
 ];
 
-self.addEventListener('install', event => {
+self.addEventListener("install", function(event) {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(FILES_TO_CACHE))
+    caches.open(CACHE_NAME).then(function(cache) {
+      return cache.addAll(FILES);
+    })
   );
+
   self.skipWaiting();
 });
 
-self.addEventListener('activate', event => {
+self.addEventListener("activate", function(event) {
   event.waitUntil(
-    caches.keys().then(cacheNames =>
-      Promise.all(
-        cacheNames
-          .filter(name => name !== CACHE_NAME)
-          .map(name => caches.delete(name))
-      )
-    )
+    caches.keys().then(function(names) {
+      return Promise.all(
+        names.map(function(name) {
+          if (name !== CACHE_NAME) {
+            return caches.delete(name);
+          }
+        })
+      );
+    })
   );
+
   self.clients.claim();
 });
 
-self.addEventListener('fetch', event => {
-  if (event.request.method !== 'GET') return;
+self.addEventListener("fetch", function(event) {
+  if (event.request.method !== "GET") {
+    return;
+  }
 
   event.respondWith(
-    caches.match(event.request).then(cachedResponse => {
-      return cachedResponse || fetch(event.request);
+    caches.match(event.request).then(function(response) {
+      if (response) {
+        return response;
+      }
+
+      return fetch(event.request);
     })
   );
 });
