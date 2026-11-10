@@ -2,7 +2,7 @@
 <html lang="es"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#10141b"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black"><meta name="apple-mobile-web-app-title" content="MAU$ POS">
-<link rel="manifest" href="manifest.webmanifest"><title>MAU$ POS · Versión 1.9</title>
+<link rel="manifest" href="manifest.webmanifest"><title>MAU$ POS · Versión 1.10</title>
 <style>
 :root{--bg:#0e1218;--panel:#171d26;--panel2:#202936;--line:#2c3746;--txt:#f3f6fa;--muted:#9aa8b8;--green:#55d69a;--pink:#f04d9b;--gold:#e9bd62;--red:#ff6b75}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:15px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding-bottom:88px}
@@ -52,7 +52,7 @@ main{max-width:100%;width:100%;padding-left:clamp(12px,4vw,18px);padding-right:c
 .qty-control input{width:100%;min-width:76px;min-height:48px;text-align:center;padding:8px 4px;font-size:18px!important;font-weight:700}
 @media(min-width:520px){.sale-line-grid{grid-template-columns:minmax(0,1fr) minmax(150px,190px);align-items:start}.sale-line-grid .price{grid-column:1;grid-row:2}.sale-line-grid .qty{grid-column:2;grid-row:1/3}.qty-control{grid-template-columns:42px minmax(60px,1fr) 42px;max-width:190px}.qty-control button{width:42px;min-width:42px}}
 </style></head><body>
-<header><div><div class="brand">MAU$ <span>POS</span></div><div class="sub">VENTAS · PRODUCCIÓN · CLIENTES · VERSIÓN 1.9</div></div></header>
+<header><div><div class="brand">MAU$ <span>POS</span></div><div class="sub">VENTAS · PRODUCCIÓN · CLIENTES · VERSIÓN 1.10</div></div></header>
 <main>
 <section id="home" class="page active"><h2>Resumen general</h2><div class="grid">
 <div class="card stat"><small>Ventas de hoy</small><strong id="hSales">$0.00</strong></div><div class="card stat"><small>Por cobrar</small><strong id="hDebt" class="pink">$0.00</strong></div>
@@ -187,10 +187,35 @@ function openProvider(id=''){let p=db.providers.find(x=>x.id===id)||{};modal(id?
 function saveProvider(id){let name=document.getElementById('pvName').value.trim();if(!name)return alert('Escribe el nombre del proveedor.');let v={name,phone:document.getElementById('pvPhone').value};if(id)Object.assign(db.providers.find(x=>x.id===id),v);else db.providers.push({id:uid(),...v});closeModal();save()}
 function deleteProvider(id){if(db.providerDebts.some(x=>x.providerId===id))return alert('Este proveedor tiene deudas registradas. Conserva su historial.');if(confirm('¿Eliminar proveedor?')){db.providers=db.providers.filter(x=>x.id!==id);closeModal();save()}}
 function openProviderDebt(){if(!db.providers.length)return alert('Primero agrega un proveedor.');modal('Registrar deuda a proveedor',`<label>Proveedor</label><select id="pdProvider">${db.providers.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select>${F('Concepto / compra','pdConcept','Mercancía, insumos...')}${F('Importe total','pdAmount','0.00','number')}${F('Abono inicial (opcional)','pdPaid','0.00','number','0')}${F('Fecha','pdDate','','date',today())}<button style="width:100%;margin-top:12px" onclick="saveProviderDebt()">Guardar deuda</button>`)}
-function saveProviderDebt(){let amount=Number(document.getElementById('pdAmount').value),paid=Number(document.getElementById('pdPaid').value)||0;if(!Number.isFinite(amount)||amount<=0||paid<0||paid>amount)return alert('Revisa el importe y el abono inicial.');db.providerDebts.unshift({id:uid(),providerId:document.getElementById('pdProvider').value,concept:document.getElementById('pdConcept').value,amount,paid,balance:amount-paid,date:document.getElementById('pdDate').value||today()});closeModal();save()}
-function providerPayment(id){let d=db.providerDebts.find(x=>x.id===id);if(!d||d.balance<=0)return;let v=prompt('Saldo pendiente: '+money(d.balance)+'\n¿Cuánto pagaste al proveedor?');if(v===null)return;let n=Number(v);if(!Number.isFinite(n)||n<=0||n>d.balance)return alert('Pago inválido.');d.paid+=n;d.balance-=n;db.providerPayments.unshift({id:uid(),debtId:id,providerId:d.providerId,amount:n,date:today()});save()}
+function saveProviderDebt(){let amount=Number(document.getElementById('pdAmount').value),paid=Number(document.getElementById('pdPaid').value)||0;if(!Number.isFinite(amount)||amount<=0||paid<0||paid>amount)return alert('Revisa el importe y el abono inicial.');let providerId=document.getElementById('pdProvider').value;db.providerDebts.unshift({id:uid(),providerId,concept:document.getElementById('pdConcept').value,amount,paid,balance:amount-paid,date:document.getElementById('pdDate').value||today()});if(paid>0)db.providerPayments.unshift({id:uid(),providerId,amount:paid,date:document.getElementById('pdDate').value||today(),type:'account',note:'Abono inicial al registrar compra'});closeModal();save()}
+function providerPayment(providerId){
+ let p=db.providers.find(x=>x.id===providerId);if(!p)return;
+ let debts=db.providerDebts.filter(x=>x.providerId===providerId).sort((a,b)=>String(a.date||'').localeCompare(String(b.date||'')));
+ let balance=debts.reduce((a,d)=>a+(Number(d.balance)||0),0);if(balance<=0)return alert('Este proveedor no tiene saldo pendiente.');
+ let v=prompt('Cuenta de '+p.name+'\nDeuda acumulada: '+money(balance)+'\n¿Cuánto deseas abonar a la cuenta?');if(v===null)return;
+ let n=Number(v);if(!Number.isFinite(n)||n<=0||n>balance)return alert('El abono debe ser mayor a cero y no superar la deuda total.');
+ let remaining=n;
+ for(const d of debts){if(remaining<=0)break;let due=Number(d.balance)||0;if(due<=0)continue;let applied=Math.min(due,remaining);d.balance=Number((due-applied).toFixed(2));d.paid=Number(((Number(d.paid)||0)+applied).toFixed(2));remaining=Number((remaining-applied).toFixed(2));}
+ db.providerPayments.unshift({id:uid(),providerId,amount:n,date:today(),type:'account',note:'Abono a cuenta general'});save();
+}
+
 function deleteProviderDebt(id){let d=db.providerDebts.find(x=>x.id===id);if(!d)return;if(!confirm('¿Eliminar esta deuda y sus pagos registrados?'))return;db.providerPayments=db.providerPayments.filter(x=>x.debtId!==id);db.providerDebts=db.providerDebts.filter(x=>x.id!==id);save()}
-function renderProviders(){let ptotal=db.providerDebts.reduce((a,x)=>a+(+x.balance||0),0);set('providerCount',db.providers.length);set('providerTotal',money(ptotal));let pl=document.getElementById('providersList');if(!pl)return;if(!db.providers.length){pl.innerHTML='<div class="empty">Agrega tu primer proveedor</div>';return;}pl.innerHTML=db.providers.map(p=>{let ds=db.providerDebts.filter(d=>d.providerId===p.id),bal=ds.reduce((a,d)=>a+(+d.balance||0),0);let head=`<div class="listitem"><div><b>${esc(p.name)}</b><div class="tiny">${esc(p.phone||'Sin teléfono')} · ${ds.length} compras</div><b class="pink">Pendiente: ${money(bal)}</b></div><button class="secondary small" onclick="openProvider('${p.id}')">Editar</button></div>`;let rows=ds.map(d=>`<div class="listitem"><div><b>${esc(d.concept||'Compra')}</b><div class="tiny">${esc(d.date)} · Total ${money(d.amount)} · Pagado ${money(d.paid)}</div><b>${money(d.balance)} pendiente</b></div><div class="actions">${d.balance>0?`<button class="small" onclick="providerPayment('${d.id}')">＋ Pago</button>`:''}<button class="danger small" onclick="deleteProviderDebt('${d.id}')">Borrar</button></div></div>`).join('');return head+rows;}).join('');}
+function renderProviders(){
+ let ptotal=db.providerDebts.reduce((a,x)=>a+(Number(x.balance)||0),0);set('providerCount',db.providers.length);set('providerTotal',money(ptotal));
+ let pl=document.getElementById('providersList');if(!pl)return;
+ if(!db.providers.length){pl.innerHTML='<div class="empty">Agrega tu primer proveedor</div>';return;}
+ pl.innerHTML=db.providers.map(p=>{
+  let ds=db.providerDebts.filter(d=>d.providerId===p.id).sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
+  let bal=ds.reduce((a,d)=>a+(Number(d.balance)||0),0);
+  let pays=db.providerPayments.filter(x=>x.providerId===p.id).sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')));
+  let head=`<div class="card"><div class="listitem"><div style="min-width:0;flex:1"><span class="person-name">${esc(p.name)}</span><div class="tiny">${esc(p.phone||'Sin teléfono')} · ${ds.length} compras registradas</div><div class="tiny" style="margin-top:8px">SALDO TOTAL DE SU CUENTA</div><b class="pink" style="font-size:22px">${money(bal)}</b></div><button class="secondary small" onclick="openProvider('${p.id}')">Editar</button></div><div class="actions" style="margin-top:10px"><button onclick="openProviderDebtFor('${p.id}')">＋ Agregar compra / deuda</button>${bal>0?`<button class="secondary" onclick="providerPayment('${p.id}')">＋ Abonar a cuenta</button>`:''}</div></div>`;
+  let purchases=ds.map(d=>`<div class="listitem"><div><b>${esc(d.concept||'Compra')}</b><div class="tiny">Compra · ${esc(d.date)} · Importe ${money(d.amount)}</div><b>${money(d.balance)} pendiente</b></div></div>`).join('');
+  let payments=pays.map(x=>`<div class="listitem"><div><b class="green">Abono a cuenta · ${money(x.amount)}</b><div class="tiny">${esc(x.date)} · ${esc(x.note||'Pago al proveedor')}</div></div></div>`).join('');
+  return head+`<div class="card"><h3>Movimientos de la cuenta</h3>${purchases||''}${payments||''}${!purchases&&!payments?'<div class="empty">Sin movimientos todavía</div>':''}</div>`;
+ }).join('');
+}
+function openProviderDebtFor(providerId){if(!db.providers.some(p=>p.id===providerId))return;openProviderDebt();let sel=document.getElementById('pdProvider');if(sel)sel.value=providerId;}
+
 function renderAll(){let st=db.sales.filter(s=>s.date===today()).reduce((a,s)=>a+s.total,0),debt=db.sales.reduce((a,s)=>a+(+s.balance||0),0);set('hSales',money(st));set('hDebt',money(debt));set('hProducts',db.products.length);set('hStock',db.products.reduce((a,p)=>a+(+p.stock||0),0));set('totalUnits',db.products.reduce((a,p)=>a+(+p.stock||0),0)+' pzas.');
 document.getElementById('stockList').innerHTML=db.products.length?db.products.map(p=>`<div class="listitem"><div><b>${esc(p.name)}</b><div class="tiny">Existencia disponible</div></div><div class="right"><b>${p.stock||0} pzas.</b><br><button class="secondary small" onclick="openProduct('${p.id}')">Editar</button><button class="secondary small" onclick="adjustStock('${p.id}')">Stock</button></div></div>`).join(''):'<div class="empty">Registra tu primer producto</div>';
 document.getElementById('productionList').innerHTML=db.production.length?db.production.map(e=>`<div class="listitem"><div><b>${esc(product(e.productId)?.name||'Producto')}</b><div class="tiny">${esc(e.date)} · ${esc(e.note||'Entrada de producción')}</div></div><div><span class="pill">+${e.qty} pzas.</span><br><button class="danger small" onclick="deleteProduction('${e.id}')">Borrar entrada</button></div></div>`).join(''):'<div class="empty">Aún no hay entradas de producción</div>';
